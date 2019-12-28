@@ -261,6 +261,10 @@ struct bt_uuid_128 {
  *  @brief GATT Characteristic Service Changed
  */
 #define BT_UUID_GATT_SC                   BT_UUID_DECLARE_16(0x2a05)
+/** @def BT_UUID_CTS_LOCAL_TIME_INFO
+ *  @brief CTS Characteristic Local Time Information
+ */
+#define BT_UUID_CTS_LOCAL_TIME_INFO       BT_UUID_DECLARE_16(0x2a0f)
 /** @def BT_UUID_BAS_BATTERY_LEVEL
  *  @brief BAS Characteristic Battery Level
  */

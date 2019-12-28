@@ -405,7 +405,7 @@ static void show_main(void)
 	char buf[CONFIG_BT_DEVICE_NAME_MAX];
 	int i;
 
-	strncpy(buf, bt_get_name(), sizeof(buf) - 1);
+	strncpy(buf, "Thanks,PHYTEC!!", sizeof(buf) - 1);
 	buf[sizeof(buf) - 1] = '\0';
 
 	/* Convert commas to newlines */

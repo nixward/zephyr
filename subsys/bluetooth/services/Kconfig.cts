@@ -5,6 +5,7 @@
 
 menuconfig BT_GATT_CTS
 	bool "Enable GATT Current Time service"
+	depends on POSIX_CLOCK
 	default n
 
 if BT_GATT_CTS
