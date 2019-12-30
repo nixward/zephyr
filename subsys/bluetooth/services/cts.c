@@ -14,11 +14,8 @@
 #include <errno.h>
 #include <zephyr.h>
 #include <init.h>
-#include <time.h>
 #include <sys/byteorder.h>
 #include <posix/time.h>
-#include <posix/sys/time.h>
-#include <posix/unistd.h>
 #include <sys/timeutil.h>
 
 #include <bluetooth/bluetooth.h>
@@ -33,7 +30,7 @@
 LOG_MODULE_REGISTER(cts);
 
 /* CTS error definitions */
-#define CTS_ERR_DATA_FIELD_IGNORED			0x80
+#define CTS_ERR_DATA_FIELD_IGNORED     0x80
 
 struct cts_current_time {
 	/* Exact Time 256 */
@@ -61,9 +58,11 @@ struct cts_local_time_info {
 	u8_t dst_offset;
 } __packed;
 
-static bool cts_ct_known;
+static bool cts_ct_known = false;
 
-static struct cts_local_time_info local_time_info;
+static u8_t cts_adjust_reason = 0;
+
+static int bt_gatt_cts_notify(u8_t adjust_reason);
 
 static void ct_ccc_cfg_changed(const struct bt_gatt_attr *attr, u16_t value)
 {
@@ -115,7 +114,7 @@ static int get_current_time(struct cts_current_time *ct)
 
 	ct->fractions_256 = ((ts.tv_nsec / MSEC_PER_SEC) * 256) / USEC_PER_SEC;
 
-	ct->adjust_reason = 0;
+	ct->adjust_reason = cts_adjust_reason;
 
 	return 0;
 }
@@ -134,12 +133,55 @@ static ssize_t read_current_time(struct bt_conn *conn,
 	return bt_gatt_attr_read(conn, attr, buf, len, offset, &ct, sizeof(ct));
 }
 
+int bt_gatt_cts_set(const struct tm *tm, long tv_nsec, u8_t adjust_reason)
+{
+	static s64_t cts_uptime_notify_next = 0;
+	struct timespec tp_prev;
+	struct timespec tp;
+	s64_t diff;
+
+	__ASSERT(adjust_reason & ~BIT_MASK(4) == 0, "Undefined adjust reason");
+	__ASSERT(adjust_reason & BIT_MASK(4) != 0, "Adjust reason should not be 0x00");
+
+	tp.tv_sec = timeutil_timegm(tm);
+	if (tp.tv_sec == -1) {
+		LOG_ERR("could not adjust time");
+		return -EINVAL;
+	}
+
+	tp.tv_nsec = tv_nsec;
+
+	clock_gettime(CLOCK_REALTIME, &tp_prev);
+	clock_settime(CLOCK_REALTIME, &tp);
+
+	/* Calculate time difference in seconds */
+	diff = tp.tv_sec - tp_prev.tv_sec;
+	diff = diff >= 0 ? diff : -diff;
+
+	cts_ct_known = true;
+
+	if (((adjust_reason & CTS_NOTIFY_ADJUST_REASONS) != 0) ||
+	    (k_uptime_get() >= cts_uptime_notify_next) ||
+	    (diff >= 60)) {
+		bt_gatt_cts_notify(adjust_reason);
+
+		/* 15 minute notify minimum interval requirement */
+		cts_uptime_notify_next = k_uptime_get()
+				+ (15 * 60 * MSEC_PER_SEC);
+	}
+
+	cts_adjust_reason = adjust_reason;
+
+	return 0;
+}
+
 #ifdef CONFIG_BT_GATT_CTS_CHAR_CT_WR
 static ssize_t write_current_time(struct bt_conn *conn,
 		const struct bt_gatt_attr *attr, const void *buf,
 		u16_t len, u16_t offset, u8_t flags)
 {
-	struct cts_current_time *ct = (struct cts_current_time *)buf;
+	const struct cts_current_time *ct = (const struct cts_current_time *)buf;
+	u16_t year;
 	struct tm tm;
 	struct timespec tp;
 
@@ -155,9 +197,9 @@ static ssize_t write_current_time(struct bt_conn *conn,
 		return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
 	}
 
-	ct->year = sys_le16_to_cpu(ct->year);
+	year = sys_le16_to_cpu(ct->year);
 
-	if ((ct->year < CTS_YEAR_MIN) || (ct->year > CTS_YEAR_MAX)) {
+	if ((year < CTS_YEAR_MIN) || (year > CTS_YEAR_MAX)) {
 		LOG_ERR("year");
 		return BT_GATT_ERR(CTS_ERR_DATA_FIELD_IGNORED);
 	}
@@ -197,7 +239,7 @@ static ssize_t write_current_time(struct bt_conn *conn,
 	tm.tm_hour = ct->hours;
 	tm.tm_mday = ct->day;
 	tm.tm_mon = ct->month - 1;
-	tm.tm_year = ct->year - 1900;
+	tm.tm_year = year - 1900;
 	tm.tm_wday = ct->day_of_week;
 
 	/* tm.tm_yday is not used */;
@@ -216,6 +258,8 @@ static ssize_t write_current_time(struct bt_conn *conn,
 
 	cts_ct_known = true;
 
+	cts_adjust_reason = ct->adjust_reason;
+
 	LOG_INF("Write Current Time Success");
 
 	return len;
@@ -226,14 +270,21 @@ static ssize_t read_local_time_info(struct bt_conn *conn,
 		const struct bt_gatt_attr *attr,
 		void *buf, u16_t len, u16_t offset)
 {
+
+	const static struct cts_local_time_info local_time_info = {
+			.time_zone = 0,
+			.dst_offset = CTS_DST_OFFSET_STD_TIME
+	};
+
 	return bt_gatt_attr_read(conn, attr, buf, len, offset,
 			&local_time_info, sizeof(local_time_info));
 }
 
 /* Current Time Service Declaration */
 BT_GATT_SERVICE_DEFINE(cts_svc,
-		BT_GATT_PRIMARY_SERVICE(BT_UUID_CTS),
-		BT_GATT_CHARACTERISTIC(BT_UUID_CTS_CURRENT_TIME,
+	BT_GATT_PRIMARY_SERVICE(BT_UUID_CTS),
+
+	BT_GATT_CHARACTERISTIC(BT_UUID_CTS_CURRENT_TIME,
 		BT_GATT_CHRC_READ | BT_GATT_CHRC_WRITE | BT_GATT_CHRC_NOTIFY,
 		BT_GATT_PERM_READ
 #ifdef CONFIG_BT_GATT_CTS_CHAR_CT_WR
@@ -251,37 +302,29 @@ BT_GATT_SERVICE_DEFINE(cts_svc,
 		NULL,
 #endif
 		NULL),
-		BT_GATT_CCC(ct_ccc_cfg_changed,
+	BT_GATT_CCC(ct_ccc_cfg_changed,
 		BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
-		BT_GATT_CHARACTERISTIC(BT_UUID_CTS_LOCAL_TIME_INFO,
+	BT_GATT_CHARACTERISTIC(BT_UUID_CTS_LOCAL_TIME_INFO,
 		BT_GATT_CHRC_READ,
 		BT_GATT_PERM_READ, read_local_time_info, NULL, NULL),
-/*		BT_GATT_CHARACTERISTIC(BT_UUID_GATT_RTI, BT_GATT_CHRC_WRITE,
-		BT_GATT_PERM_NONE, NULL, NULL, NULL),*/
-		);
+);
 
 static int cts_init(struct device *dev)
 {
 	ARG_UNUSED(dev);
 
-	cts_ct_known = false;
-
-	local_time_info.time_zone = 0;
-	local_time_info.dst_offset = CTS_DST_OFFSET_STD_TIME;
-
 	return 0;
 }
 
-int bt_gatt_cts_notify(u8_t adjust_reason)
+static int bt_gatt_cts_notify(u8_t adjust_reason)
 {
 	struct cts_current_time ct = {0};
 	int ret;
 
-	cts_ct_known = true;
-
 	ret = get_current_time(&ct);
 	if (ret != 0) {
 		LOG_ERR("Could not get current time");
+		return ret;
 	}
 
 	ct.adjust_reason = adjust_reason;

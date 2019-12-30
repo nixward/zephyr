@@ -7,9 +7,11 @@
 #ifndef ZEPHYR_INCLUDE_BLUETOOTH_SERVICES_CTS_H_
 #define ZEPHYR_INCLUDE_BLUETOOTH_SERVICES_CTS_H_
 
+#include <time.h>
+
 /**
- * @brief Heart Rate Service (CTS)
- * @defgroup bt_gatt_CTS Heart Rate Service (CTS)
+ * @brief Current Time Service (CTS)
+ * @defgroup bt_gatt_cts Current Time Service (CTS)
  * @ingroup bluetooth
  * @{
  *
@@ -42,6 +44,10 @@ extern "C" {
 #define CTS_CHANGE_TZ_TIME_UPDATE      BIT(2)
 #define CTS_CHANGE_DST_TIME_UPDATE     BIT(3)
 
+#define CTS_NOTIFY_ADJUST_REASONS      (CTS_MANUAL_TIME_UPDATE | \
+                                        CTS_CHANGE_TZ_TIME_UPDATE | \
+                                        CTS_CHANGE_DST_TIME_UPDATE)
+
 #define CTS_TIME_ZONE_MIN              -48
 #define CTS_TIME_ZONE_MAX              56
 
@@ -51,15 +57,17 @@ extern "C" {
 #define CTS_DST_OFFSET_DDAYLIGHT_TIME  8
 #define CTS_DST_OFFSET_NOT_KNOWN       255
 
-/** @brief Notify current time.
+/** @brief Set current time.
  *
  * This will send a GATT notification to all current subscribers.
- *
+ *  @param *tm The time in seconds to set the time with.
+ *  @param tv_nsec the additional time in nanoseconds to set the time with.
  *  @param adjust_reason The reason the current time has been adjusted.
  *
  *  @return Zero in case of success and error code in case of error.
  */
-int bt_gatt_cts_notify(u8_t reason);
+int bt_gatt_cts_set(const struct tm *tm, long tv_nsec, u8_t adjust_reason);
+
 
 #ifdef __cplusplus
 }
