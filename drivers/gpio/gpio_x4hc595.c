@@ -22,7 +22,7 @@ LOG_MODULE_REGISTER(x5hc595_gpio);
 
 static int x4hc595_refresh(struct device *port)
 {
-	const struct x4hc595_config *dev_cfg = DEV_CFG(port);
+	const struct x4hc595_cfg *dev_cfg = DEV_CFG(port);
 	struct x4hc595_data *dev_data = DEV_DATA(port);
 	int ret;
 
@@ -67,7 +67,7 @@ GPIO_INT_EDGE | GPIO_INT_LOW_0 | GPIO_INT_HIGH_1 |)
 
 int x4hc595_pin_configure(struct device *port, gpio_pin_t pin, gpio_flags_t flags)
 {
-	const struct x4hc595_config *dev_cfg = DEV_CFG(port);
+	const struct x4hc595_cfg *dev_cfg = DEV_CFG(port);
 	struct x4hc595_data *dev_data = DEV_DATA(port);
 
 	if (pin >= dev_cfg->sr_cnt * 8) {
@@ -100,7 +100,7 @@ int x4hc595_port_get_raw(struct device *port, gpio_port_value_t *value)
 int x4hc595_port_set_masked_raw(struct device *port, gpio_port_pins_t mask,
 			   gpio_port_value_t value)
 {
-	const struct x4hc595_config *dev_cfg = DEV_CFG(port);
+	const struct x4hc595_cfg *dev_cfg = DEV_CFG(port);
 	struct x4hc595_data *dev_data = DEV_DATA(port);
 
 	gpio_port_pins_t inval_mask = ~BIT_MASK(dev_cfg->sr_cnt * 8);
@@ -123,7 +123,7 @@ int x4hc595_port_set_masked_raw(struct device *port, gpio_port_pins_t mask,
 
 int x4hc595_port_set_bits_raw(struct device *port, gpio_port_pins_t pins)
 {
-	const struct x4hc595_config *dev_cfg = DEV_CFG(port);
+	const struct x4hc595_cfg *dev_cfg = DEV_CFG(port);
 	struct x4hc595_data *dev_data = DEV_DATA(port);
 
 	gpio_port_pins_t inval_mask = ~BIT_MASK(dev_cfg->sr_cnt * 8);
@@ -145,7 +145,7 @@ int x4hc595_port_set_bits_raw(struct device *port, gpio_port_pins_t pins)
 
 int x4hc595_port_clear_bits_raw(struct device *port, gpio_port_pins_t pins)
 {
-	const struct x4hc595_config *dev_cfg = DEV_CFG(port);
+	const struct x4hc595_cfg *dev_cfg = DEV_CFG(port);
 	struct x4hc595_data *dev_data = DEV_DATA(port);
 
 	gpio_port_pins_t inval_mask = ~BIT_MASK(dev_cfg->sr_cnt * 8);
@@ -167,7 +167,7 @@ int x4hc595_port_clear_bits_raw(struct device *port, gpio_port_pins_t pins)
 
 int x4hc595_port_toggle_bits(struct device *port, gpio_port_pins_t pins)
 {
-	const struct x4hc595_config *dev_cfg = DEV_CFG(port);
+	const struct x4hc595_cfg *dev_cfg = DEV_CFG(port);
 	struct x4hc595_data *dev_data = DEV_DATA(port);
 	int ret;
 
@@ -234,14 +234,14 @@ u32_t x4hc595_get_pending_int(struct device *port)
 
 static int x4hc595_configure(struct device *dev)
 {
-	const struct x4hc595_config *dev_cfg = DEV_CFG(dev);
+	const struct x4hc595_cfg *dev_cfg = DEV_CFG(dev);
 	struct x4hc595_data *dev_data = DEV_DATA(dev);
 	int ret = 0;
 
 	return ret;
 }
 
-static const struct gpio_driver_api gpio_api_funcs = {
+static const struct gpio_driver_api x4hc595_gpio_api_funcs = {
 	.pin_configure = x4hc595_pin_configure,
 	.port_get_raw = x4hc595_port_get_raw,
 	.port_set_masked_raw = x4hc595_port_set_masked_raw,
@@ -257,7 +257,7 @@ static const struct gpio_driver_api gpio_api_funcs = {
 
 static int x4hc595_init(struct device *dev)
 {
-	const struct x4hc595_config *dev_cfg = DEV_CFG(dev);
+	const struct x4hc595_cfg *dev_cfg = DEV_CFG(dev);
 	struct x4hc595_data *dev_data = DEV_DATA(dev);
 	int ret;
 #if DT_INST_X4HC595_DEV_HAS_SRCLK_GPIOS(0)
@@ -371,25 +371,31 @@ static int x4hc595_init(struct device *dev)
 	return ret;
 }
 
-static const struct x4hc595_config x4hc595_config = {
-	.spi_port = DT_INST_BUS_LABEL(0),
-	.spi_freq = DT_INST_PROP(0, spi_max_frequency),
-	.spi_slave = DT_INST_REG_ADDR(0),
-#if DT_INST_X4HC595_DEV_HAS_SRCLK_GPIOS(0)
-	.srclk_pin = DT_INST_GPIO_PIN(0, srclk_gpios),
-	.srclk_port = DT_INST_GPIO_LABEL(0, srclk_gpios),
-#endif /* DT_INST_X4HC595_DEV_HAS_SRCLK_GPIOS(0) */
-	.rclk_pin = DT_INST_GPIO_PIN(0, rclk_gpios),
-	.rclk_port = DT_INST_GPIO_LABEL(0, rclk_gpios),
-#if DT_INST_X4HC595_DEV_HAS_OE_GPIOS(0)
-	.oe_pin = DT_INST_GPIO_PIN(0, oe_gpios),
-	.oe_port = DT_INST_GPIO_LABEL(0, oe_gpios),
-#endif /* DT_INST_X4HC595_DEV_HAS_OE_GPIOS(0) */
-	.sr_cnt = DT_INST_PROP(0, sr_cnt),
-};
+#define CREATE_X4HC595(inst)                                         \
+     static struct x4hc595_data x4hc595_data_##inst;                 \
+     static const struct x4hc595_cfg x4hc595_cfg_##inst = {          \
+	.spi_port = DT_INST_BUS_LABEL(inst),                         \
+	.spi_freq = DT_INST_PROP(inst, spi_max_frequency),           \
+	.spi_slave = DT_INST_REG_ADDR(inst),                         \
+#if DT_INST_X4HC595_DEV_HAS_SRCLK_GPIOS(inst)                        \
+	.srclk_pin = DT_INST_GPIO_PIN(inst, srclk_gpios),            \
+	.srclk_port = DT_INST_GPIO_LABEL(inst, srclk_gpios),         \
+#endif /* DT_INST_X4HC595_DEV_HAS_SRCLK_GPIOS(inst) */               \
+	.rclk_pin = DT_INST_GPIO_PIN(inst, rclk_gpios),              \
+	.rclk_port = DT_INST_GPIO_LABEL(inst, rclk_gpios),           \
+#if DT_INST_X4HC595_DEV_HAS_OE_GPIOS(inst)                           \
+	.oe_pin = DT_INST_GPIO_PIN(inst, oe_gpios),                  \
+	.oe_port = DT_INST_GPIO_LABEL(inst, oe_gpios),               \
+#endif /* DT_INST_X4HC595_DEV_HAS_OE_GPIOS(inst) */                  \
+	.sr_cnt = DT_INST_PROP(inst, sr_cnt)                         \
+     };                                                              \
+     DEVICE_AND_API_INIT(x4hc595_##inst,                             \
+                         DT_INST_LABEL(inst),                        \
+                         x4hc595_init_function,                      \
+                         &x4hc595_data_##inst,                       \
+                         &x4hc595_cfg_##inst,                        \
+                         POST_KERNEL,                                \
+			 CONFIG_X4HC595_INIT_PRIORITY,               \
+                         &x4hc595_gpio_api_funcs)
 
-static struct x4hc595_data x4hc595_data;
-
-DEVICE_AND_API_INIT(x4hc595, DT_INST_LABEL(0), x4hc595_init,
-		    &x4hc595_data, &x4hc595_config, POST_KERNEL,
-		    CONFIG_X4HC595_INIT_PRIORITY, &x4hc595_api_funcs);
+DT_INST_FOREACH(CREATE_X4HC595);

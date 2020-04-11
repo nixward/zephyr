@@ -17,7 +17,7 @@
 #define CONFIG_X4HC595_INIT_PRIORITY 50
 
 #define DEV_CFG(dev) \
-	((const struct x4hc595_config *const)(dev)->config->config_info)
+	((const struct x4hc595_cfg *const)(dev)->config->config_info)
 #define DEV_DATA(dev) ((struct x4hc595_data *const)(dev)->driver_data)
 
 struct x4hc595_data {
@@ -41,7 +41,7 @@ struct x4hc595_data {
 	gpio_port_value_t value;
 };
 
-struct x4hc595_config {
+struct x4hc595_cfg {
 	/* spi configuration */
 	const char *spi_port;
 	u32_t spi_freq;
