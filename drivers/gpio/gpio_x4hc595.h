@@ -11,7 +11,7 @@
 #include <drivers/gpio.h>
 
 /* TODO */
-#define DT_INST_X4HC595_DEV_HAS_SRCLK_GPIOS(x) false
+#define DT_INST_X4HC595_DEV_HAS_SRCLR_GPIOS(x) false
 #define DT_INST_X4HC595_DEV_HAS_OE_GPIOS(x) false
 #define DT_X4HC595_SR_CNT                   2
 #define CONFIG_X4HC595_INIT_PRIORITY 50
@@ -48,16 +48,12 @@ struct x4hc595_cfg {
 	u8_t spi_slave;
 
 	/* control pins */
-#if DT_INST_X4HC595_DEV_HAS_SRCLK_GPIOS(0)
-	u8_t srclk_pin;
-	const char *srclk_port;
-#endif /* DT_INST_X4HC595_DEV_HAS_SRCLK_GPIOS(0) */
+	u8_t srclr_pin;
+	const char *srclr_port;
 	u8_t rclk_pin;
 	const char *rclk_port;
-#if DT_INST_X4HC595_DEV_HAS_OE_GPIOS(0)
 	u8_t oe_pin;
 	const char *oe_port;
-#endif /* DT_INST_X4HC595_DEV_HAS_OE_GPIOS(0) */
 
 	/* shift register count - TODO needed? */
 	u8_t sr_cnt;
