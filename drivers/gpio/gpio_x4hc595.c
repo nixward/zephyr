@@ -20,14 +20,17 @@ LOG_MODULE_REGISTER(x5hc595_gpio);
 
 #include "gpio_x4hc595.h"
 
-static int x4hc595_refresh(struct device *port)
+static int x4hc595_refresh(struct device *dev)
 {
-	const struct x4hc595_cfg *dev_cfg = DEV_CFG(port);
-	struct x4hc595_data *dev_data = DEV_DATA(port);
+	const struct x4hc595_cfg *dev_cfg = DEV_CFG(dev);
+	struct x4hc595_data *dev_data = DEV_DATA(dev);
 	int ret;
 
+	/* LSB is shifted last */
+	u32_t val = sys_cpu_to_be32(dev_data->value) >> 4 - dev_cfg->sr_cnt;
+
 	struct spi_buf tx_buf[] = {
-		{ .buf = &dev_data->value, .len = sizeof(dev_data->value) }
+		{ .buf = &val, .len = dev_cfg->sr_cnt }
 	};
 	const struct spi_buf_set tx = {
 		.buffers = tx_buf, .count = ARRAY_SIZE(tx_buf)
@@ -35,29 +38,32 @@ static int x4hc595_refresh(struct device *port)
 
 	ret = gpio_pin_set_raw(dev_data->rclk_gpio, dev_cfg->rclk_pin, 0);
 	if (ret != 0) {
-		LOG_ERR("RVCK did not clear");
+		LOG_ERR("RCLK did not clear [%d]", ret);
+		return ret;
 	}
 
-	ret = spi_write(DEV_DATA(dev)->spi, &DEV_DATA(dev)->spi_cfg, &tx);
+	ret = spi_write(dev_data->spi, &dev_data->spi_cfg, &tx);
 	if (ret != 0) {
-		LOG_ERR("shifting data");
+		LOG_ERR("Shifting data [%d]", ret);
+		return ret;
 	}
 
 	ret = gpio_pin_set_raw(dev_data->rclk_gpio, dev_cfg->rclk_pin, 1);
 	if (ret != 0) {
-		LOG_ERR("RVCK did not set");
+		LOG_ERR("RCLK did not set [%d]", ret);
+		return ret;
 	}
 
-	return ret;
+	return 0;
 }
 
 static int x4hc595_work_handler(struct work *item)
 {
-	struct device *port = CONTAINER_OF(item, struct device, work);
+	struct device *dev = CONTAINER_OF(item, struct device, work);
 
 	k_mutex_lock(&dev_data->mutex, K_FOREVER);
 
-	x4hc595_refresh(port);
+	x4hc595_refresh(dev);
 
 	k_mutex_unlock(&dev_data->mutex);
 }
@@ -65,10 +71,10 @@ static int x4hc595_work_handler(struct work *item)
 #define GPIO_FLAGS_NOT_SUPPORTED (GPIO_INPUT | GPIO_INT_ENABLE | 
 GPIO_INT_EDGE | GPIO_INT_LOW_0 | GPIO_INT_HIGH_1 |)
 
-int x4hc595_pin_configure(struct device *port, gpio_pin_t pin, gpio_flags_t flags)
+int x4hc595_pin_configure(struct device *dev, gpio_pin_t pin, gpio_flags_t flags)
 {
-	const struct x4hc595_cfg *dev_cfg = DEV_CFG(port);
-	struct x4hc595_data *dev_data = DEV_DATA(port);
+	const struct x4hc595_cfg *dev_cfg = DEV_CFG(dev);
+	struct x4hc595_data *dev_data = DEV_DATA(dev);
 
 	if (pin >= dev_cfg->sr_cnt * 8) {
 		LOG_ERR("GPIO pin %u configutaion not supported", pin);
@@ -88,20 +94,24 @@ int x4hc595_pin_configure(struct device *port, gpio_pin_t pin, gpio_flags_t flag
 	return 0;
 }
 
-int x4hc595_port_get_raw(struct device *port, gpio_port_value_t *value)
+int x4hc595_port_get_raw(struct device *dev, gpio_port_value_t *value)
 {
-	struct x4hc595_data *dev_data = DEV_DATA(port);
+	struct x4hc595_data *dev_data = DEV_DATA(dev);
+
+	k_mutex_lock(&dev_data->mutex, K_FOREVER);
 
 	*value = dev_data->value;
+
+	k_mutex_unlock(&dev_data->mutex);
 
 	return 0;
 }
 
-int x4hc595_port_set_masked_raw(struct device *port, gpio_port_pins_t mask,
+int x4hc595_port_set_masked_raw(struct device *dev, gpio_port_pins_t mask,
 			   gpio_port_value_t value)
 {
-	const struct x4hc595_cfg *dev_cfg = DEV_CFG(port);
-	struct x4hc595_data *dev_data = DEV_DATA(port);
+	const struct x4hc595_cfg *dev_cfg = DEV_CFG(dev);
+	struct x4hc595_data *dev_data = DEV_DATA(dev);
 
 	gpio_port_pins_t inval_mask = ~BIT_MASK(dev_cfg->sr_cnt * 8);
 	if (mask & inval_mask != 0U) {
@@ -116,15 +126,15 @@ int x4hc595_port_set_masked_raw(struct device *port, gpio_port_pins_t mask,
 
 	k_mutex_unlock(&dev_data->mutex);
 
-        k_work_submit(&port.work);
+        k_work_submit(&dev.work);
 
 	return 0;
 }
 
-int x4hc595_port_set_bits_raw(struct device *port, gpio_port_pins_t pins)
+int x4hc595_port_set_bits_raw(struct device *dev, gpio_port_pins_t pins)
 {
-	const struct x4hc595_cfg *dev_cfg = DEV_CFG(port);
-	struct x4hc595_data *dev_data = DEV_DATA(port);
+	const struct x4hc595_cfg *dev_cfg = DEV_CFG(dev);
+	struct x4hc595_data *dev_data = DEV_DATA(dev);
 
 	gpio_port_pins_t inval_mask = ~BIT_MASK(dev_cfg->sr_cnt * 8);
 	if (pins & inval_mask != 0U) {
@@ -138,15 +148,15 @@ int x4hc595_port_set_bits_raw(struct device *port, gpio_port_pins_t pins)
 
 	k_mutex_unlock(&dev_data->mutex);
 
-        k_work_submit(&port.work);
+        k_work_submit(&dev.work);
 
 	return 0;
 }
 
-int x4hc595_port_clear_bits_raw(struct device *port, gpio_port_pins_t pins)
+int x4hc595_port_clear_bits_raw(struct device *dev, gpio_port_pins_t pins)
 {
-	const struct x4hc595_cfg *dev_cfg = DEV_CFG(port);
-	struct x4hc595_data *dev_data = DEV_DATA(port);
+	const struct x4hc595_cfg *dev_cfg = DEV_CFG(dev);
+	struct x4hc595_data *dev_data = DEV_DATA(dev);
 
 	gpio_port_pins_t inval_mask = ~BIT_MASK(dev_cfg->sr_cnt * 8);
 	if (pins & inval_mask != 0U) {
@@ -160,15 +170,15 @@ int x4hc595_port_clear_bits_raw(struct device *port, gpio_port_pins_t pins)
 
 	k_mutex_unlock(&dev_data->mutex);
 
-        k_work_submit(&port.work);
+        k_work_submit(&dev.work);
 
 	return 0;
 }
 
-int x4hc595_port_toggle_bits(struct device *port, gpio_port_pins_t pins)
+int x4hc595_port_toggle_bits(struct device *dev, gpio_port_pins_t pins)
 {
-	const struct x4hc595_cfg *dev_cfg = DEV_CFG(port);
-	struct x4hc595_data *dev_data = DEV_DATA(port);
+	const struct x4hc595_cfg *dev_cfg = DEV_CFG(dev);
+	struct x4hc595_data *dev_data = DEV_DATA(dev);
 	int ret;
 
 	gpio_port_pins_t inval_mask = ~BIT_MASK(dev_cfg->sr_cnt * 8);
@@ -181,64 +191,65 @@ int x4hc595_port_toggle_bits(struct device *port, gpio_port_pins_t pins)
 
 	dev_data->value ^= pins;
 
-	ret = x4hc595_refresh(port);
-
 	k_mutex_unlock(&dev_data->mutex);
+
+        k_work_submit(&dev.work);
 
 	return ret;
 }
 
-int x4hc595_pin_interrupt_configure(struct device *port, gpio_pin_t pin,
+int x4hc595_pin_interrupt_configure(struct device *dev, gpio_pin_t pin,
 			       enum gpio_int_mode, enum gpio_int_trig)
 {
-	(void)port;
+	(void)dev;
 	(void)pin;
 	(void)gpio_int_mode;
 	(void)gpio_int_trig;
 
+	LOG_ERR("Not supported");
+
 	return -ENOTSUP;
 }
 
-int x4hc595_manage_callback(struct device *port, struct gpio_callback *cb,
+int x4hc595_manage_callback(struct device *dev, struct gpio_callback *cb,
 		       bool set)
 {
-	(void)port;
+	(void)dev;
 	(void)cb;
 	(void)set;
 
+	LOG_ERR("Not supported");
+
 	return -ENOTSUP;
 }
 
-int x4hc595_enable_callback(struct device *port, gpio_pin_t pin)
+int x4hc595_enable_callback(struct device *dev, gpio_pin_t pin)
 {
-	(void)port;
+	(void)dev;
 	(void)pin;
 
+	LOG_ERR("Not supported");
+
 	return -ENOTSUP;
 }
 
-int x4hc595_disable_callback(struct device *port, gpio_pin_t pin)
+int x4hc595_disable_callback(struct device *dev, gpio_pin_t pin)
 {
-	(void)port;
+	(void)dev;
 	(void)pin;
 
+	LOG_ERR("Not supported");
+
 	return -ENOTSUP;
 }
 
-u32_t x4hc595_get_pending_int(struct device *port)
+u32_t x4hc595_get_pending_int(struct device *dev)
 {
-	(void)port;
+	(void)dev;
 
-	return 0;
-}
+	LOG_ERR("Not supported");
 
-static int x4hc595_configure(struct device *dev)
-{
-	const struct x4hc595_cfg *dev_cfg = DEV_CFG(dev);
-	struct x4hc595_data *dev_data = DEV_DATA(dev);
-	int ret = 0;
-
-	return ret;
+	return -ENOTSUP;
 }
 
 static const struct gpio_driver_api x4hc595_gpio_api_funcs = {
@@ -261,15 +272,13 @@ static int x4hc595_init(struct device *dev)
 	struct x4hc595_data *dev_data = DEV_DATA(dev);
 	int ret;
 #if DT_INST_X4HC595_DEV_HAS_SRCLK_GPIOS(0)
-	struct device *srclk_gpio;
+	struct device *srclr_gpio;
 #endif /* DT_INST_X4HC595_DEV_HAS_SRCLK_GPIOS(0) */
 #if DT_INST_X4HC595_DEV_HAS_OE_GPIOS(0)
 	struct device *oe_gpio;
 #endif /* DT_INST_X4HC595_DEV_HAS_OE_GPIOS(0) */
 
 	k_mutex_init(&dev_data->mutex);
-
-	k_mutex_lock(&dev_data->mutex, K_FOREVER);
 
 	k_work_init(&dev.work, x4hc595_work_handler);
 
@@ -279,33 +288,34 @@ static int x4hc595_init(struct device *dev)
 	dev_data->spi_cfg.slave = dev_cfg->spi_slave;
 
 	dev_data->spi = device_get_binding(dev_cfg->spi_port);
-	if (!dev_data->spi) {
-		LOG_ERR("SPI master port %s not found", dev_cfg->spi_port);
-		return -EINVAL;
+	if (dev_data->spi == NULL) {
+		LOG_ERR("SPI master deivce %s not found", dev_cfg->spi_port);
+		return -ENODEV;
 	}
 
-	/* No SPI chip select pin */
+	/* No SPI chip select pin required */
 	dev_data->spi_cfg.cs = NULL;
 
 #if DT_INST_X4HC595_DEV_HAS_SRCLK_GPIOS(0)
 	/* Set SRCLK input to physical low - shift registers cleared */
-	srclk_gpio = device_get_binding(dev_cfg->srclk_port);
-	if (srclk_gpio == NULL) {
-		LOG_ERR("GPIO port %s not found", dev_cfg->srclk_port);
-		return -EINVAL;
+	srclr_gpio = device_get_binding(dev_cfg->srclr_port);
+	if (srclr_gpio == NULL) {
+		LOG_ERR("GPIO device %s not found", dev_cfg->srclr_port);
+		return -ENODEV;
 	}
 
-	ret = gpio_pin_set_raw(srclk_gpio, dev_cfg->srclk_pin, 0);
+	ret = gpio_pin_set_raw(srclr_gpio, dev_cfg->srclr_pin, 0);
 	if (ret != 0) {
 		LOG_ERR("SRCLK low");
-		return -EINVAL;
+		return ret;
 	}
 
-	if (gpio_pin_configure(srclk_gpio, dev_cfg->srclk_pin,
+	ret = gpio_pin_configure(srclr_gpio, dev_cfg->srclr_pin,
 			       (GPIO_OUTPUT |
-				DT_INST_GPIO_FLAGS(0, srclk_gpios)))) {
-		LOG_ERR("Unable to configure GPIO pin %u", dev_cfg->srclk_pin);
-		return -EINVAL;
+				DT_INST_GPIO_FLAGS(0, srclr_gpios)));
+	if (ret != 0) {
+		LOG_ERR("Unable to configure GPIO pin %u", dev_cfg->srclr_pin);
+		return ret;
 	}
 #endif /* DT_INST_X4HC595_DEV_HAS_SRCLK_GPIOS(0) */
 
@@ -313,47 +323,47 @@ static int x4hc595_init(struct device *dev)
 	/* Set OE input to physical high - outputs disabled */
 	oe_gpio = device_get_binding(dev_cfg->oe_port);
 	if (oe_gpio == NULL) {
-		LOG_ERR("GPIO port %s not found", dev_cfg->oe_port);
-		return -EINVAL;
+		LOG_ERR("GPIO device %s not found", dev_cfg->oe_port);
+		return -ENODEV;
 	}
 
 	ret = gpio_pin_set_raw(oe_gpio, dev_cfg->oe_pin, 1);
 	if (ret != 0) {
 		LOG_ERR("OE high");
-		return -EINVAL;
+		return ret;
 	}
 
-	if (gpio_pin_configure(oe_gpio, dev_cfg->oe_pin,
+	ret = gpio_pin_configure(oe_gpio, dev_cfg->oe_pin,
 			       (GPIO_OUTPUT |
-				DT_INST_GPIO_FLAGS(0, oe_gpios)))) {
+				DT_INST_GPIO_FLAGS(0, oe_gpios)));
+	if (ret != 0) {
 		LOG_ERR("Unable to configure GPIO pin %u", dev_cfg->oe_pin);
-		return -EINVAL;
+		return ret;
 	}
 #endif /* DT_INST_X4HC595_DEV_HAS_OE_GPIOS(0) */
 
 	/* Set RCLK input to physical low - initialise low */
 	dev_data->rclk_gpio = device_get_binding(dev_cfg->rclk_port);
 	if (dev_data->rclk_gpio == NULL) {
-		LOG_ERR("GPIO port %s not found", dev_cfg->rclk_port);
-		return -EINVAL;
+		LOG_ERR("GPIO device %s not found", dev_cfg->rclk_port);
+		return -ENODEV;
 	}
 
 	ret = gpio_pin_set_raw(dev_data->rclk_gpio, dev_cfg->rclk_pin, 0);
 	if (ret != 0) {
 		LOG_ERR("SRCLK low");
-		return -EINVAL;
+		return ret;
 	}
 
-	if (gpio_pin_configure(dev_data->rclk_gpio, dev_cfg->rclk_pin,
+	ret = gpio_pin_configure(dev_data->rclk_gpio, dev_cfg->rclk_pin,
 			       (GPIO_OUTPUT |
-				DT_INST_GPIO_FLAGS(0, rclk_gpios)))) {
+				DT_INST_GPIO_FLAGS(0, rclk_gpios)));
+	if (ret != 0) {
 		LOG_ERR("Unable to configure GPIO pin %u", dev_cfg->rclk_pin);
-		return -EINVAL;
+		return ret;
 	}
 
-	//ret = x4hc595_configure(dev);
-
-	(void)memset(dev_data->data, 0, sizeof(dev_data->data));
+	dev_data->value = 0U;
 
 	x4hc595_refresh(dev);
 
@@ -362,24 +372,22 @@ static int x4hc595_init(struct device *dev)
 	ret = gpio_pin_set_raw(oe_gpio, dev_cfg->oe_pin, 0);
 	if (ret != 0) {
 		LOG_ERR("OE low");
-		return -EINVAL;
+		return ret;
 	}
 #endif /* DT_INST_X4HC595_DEV_HAS_OE_GPIOS(0) */
 
-	k_mutex_unlock(&dev_data->mutex);
-
-	return ret;
+	return 0;
 }
 
 #define CREATE_X4HC595(inst)                                         \
-     static struct x4hc595_data x4hc595_data_##inst;                 \
-     static const struct x4hc595_cfg x4hc595_cfg_##inst = {          \
+	static struct x4hc595_data x4hc595_data_##inst;              \
+	static const struct x4hc595_cfg x4hc595_cfg_##inst = {       \
 	.spi_port = DT_INST_BUS_LABEL(inst),                         \
 	.spi_freq = DT_INST_PROP(inst, spi_max_frequency),           \
 	.spi_slave = DT_INST_REG_ADDR(inst),                         \
 #if DT_INST_X4HC595_DEV_HAS_SRCLK_GPIOS(inst)                        \
-	.srclk_pin = DT_INST_GPIO_PIN(inst, srclk_gpios),            \
-	.srclk_port = DT_INST_GPIO_LABEL(inst, srclk_gpios),         \
+	.srclr_pin = DT_INST_GPIO_PIN(inst, srclr_gpios),            \
+	.srclr_port = DT_INST_GPIO_LABEL(inst, srclr_gpios),         \
 #endif /* DT_INST_X4HC595_DEV_HAS_SRCLK_GPIOS(inst) */               \
 	.rclk_pin = DT_INST_GPIO_PIN(inst, rclk_gpios),              \
 	.rclk_port = DT_INST_GPIO_LABEL(inst, rclk_gpios),           \
