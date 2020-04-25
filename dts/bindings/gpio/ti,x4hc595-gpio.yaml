@@ -15,9 +15,9 @@ properties:
         Shift Register Clear.
 
         Clears shift registers.  Is active when low.
-    rclk-gpios:
+    spi-cs-gpios:
       type: phandle-array
-      required: false
+      required: true
       description: ￼>
         Register Clock.
 

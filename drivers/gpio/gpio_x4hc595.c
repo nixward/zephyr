@@ -289,8 +289,17 @@ static int x4hc595_init(struct device *dev)
 		return -ENODEV;
 	}
 
-	/* No SPI chip select pin required */
-	dev_data->spi_cfg.cs = NULL;
+	dev_data->spi_cs_ctrl.gpio_dev =
+		device_get_binding(dev_cfg->spi_cs_port);
+	if (!dev_data->spi_cs_ctrl.gpio_dev) {
+		LOG_ERR("Unable to get GPIO SPI CS device");
+		return -ENODEV;
+	}
+
+	dev_data->spi_cs_ctrl.gpio_pin = dev_cfg->spi_cs_pin;
+	dev_data->spi_cs_ctrl.delay = 0U;
+
+	dev_data->spi_cfg.cs = &dev_data->spi_cs_ctrl;
 
 	if (dev_cfg->srclr_port == NULL) {
 		LOG_WRN("SRCLR pin not controlled by driver");
@@ -343,22 +352,16 @@ static int x4hc595_init(struct device *dev)
 	}
 
 	/* Set RCLK input to physical low - initialise low */
-	dev_data->rclk_gpio = device_get_binding(dev_cfg->rclk_port);
-	if (dev_data->rclk_gpio == NULL) {
-		LOG_ERR("GPIO device %s not found", dev_cfg->rclk_port);
-		return -ENODEV;
-	}
-
-	ret = gpio_pin_set_raw(dev_data->rclk_gpio, dev_cfg->rclk_pin, 0);
+	ret = gpio_pin_set_raw(dev_data->spi_cs_ctrl.gpio_dev, dev_cfg->spi_cs_pin, 0);
 	if (ret != 0) {
 		LOG_ERR("Failed to set SRCLK low");
 		return ret;
 	}
 
-	ret = gpio_pin_configure(dev_data->rclk_gpio, dev_cfg->rclk_pin,
+	ret = gpio_pin_configure(dev_data->spi_cs_ctrl.gpio_dev, dev_cfg->spi_cs_pin,
 				 GPIO_OUTPUT);
 	if (ret != 0) {
-		LOG_ERR("Failed to configure GPIO pin %u", dev_cfg->rclk_pin);
+		LOG_ERR("Failed to configure GPIO pin %u", dev_cfg->spi_cs_pin);
 		return ret;
 	}
 
