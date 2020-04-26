@@ -1,0 +1,34 @@
+/*
+ * Copyright (c) 2020 Nick Ward
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+&spi0 {
+	status = "disabled";
+};
+
+&spi1 {
+	status = "disabled";
+};
+
+&arduino_spi {
+	status = "okay";
+	cs-gpios = <&gpio0 15 0>; /* D4 */
+	sck-pin = <18>; /* D7 */
+	mosi-pin = <19>; /* D8 */
+	miso-pin = <20>; /* D9 */
+	gpio_x4hc595_0: gpio-x4hc595@0 {
+		compatible = "ti,x4hc595-gpio";
+		spi-max-frequency = <1000000>;
+		#oe-gpios = <&arduino_header 19 GPIO_ACTIVE_LOW>; /* D13 */
+		status = "okay";
+		label = "GPIO_X4HC595_P0";
+		sr-cnt = <2>;
+		reg = <0x0>;
+		#gpio-cells = <2>;
+
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+};

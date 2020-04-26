@@ -1,11 +1,11 @@
-# Copyright (c) 2019 Karsten Koenig
+# Copyright (c) 2020 Nick Ward
 # SPDX-License-Identifier: Apache-2.0
 
 description: X4HC595 output shift register
 
-compatible: "microchip,x4hc595"
+compatible: "ti,x4hc595"
 
-include: [spi-device.yaml, gpio-controller.yaml]
+include: [spi-device.yaml, gpio-controller.yaml, base.yaml]
 
 properties:
     srclr-gpios:
@@ -15,13 +15,6 @@ properties:
         Shift Register Clear.
 
         Clears shift registers.  Is active when low.
-    spi-cs-gpios:
-      type: phandle-array
-      required: true
-      description: ￼>
-        Register Clock.
-
-        On rising edge shift-register data is stored in the storage register.
     oe-gpios:
       type: phandle-array
       required: false
@@ -29,6 +22,13 @@ properties:
         Output Enable.
 
         Enables shift register outputs.  Is active when low.
+    sr-cnt:
+      type: int
+      required: true
+      description: >
+        Shift register count.
+
+        Between 1 to 4 shift registers.
     reg:
       type: array
       required: true

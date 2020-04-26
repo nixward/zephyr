@@ -1,0 +1,24 @@
+# Copyright (c) 2020 Nick Ward
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig GPIO_X4HC595
+	bool "X4HC595 shift register driver"
+	depends on GPIO || SPI
+	help
+	  Enable GPIO driver for X4HC595 shift register(s).
+
+if GPIO_X4HC595
+
+config CONFIG_GPIO_X4HC595_INIT_PRIORITY
+	int "x4hc595 GPIO drive init priority"
+	default 50
+	help
+	  X4HC595 GPIO driver init priority.
+
+config GPIO_X4HC595_P0
+	bool "x4hc595 GPIO Port 0"
+	help
+	  Enable X4HC595 GPIO port 0 config options.
+
+
+endif # GPIO_X4HC595
