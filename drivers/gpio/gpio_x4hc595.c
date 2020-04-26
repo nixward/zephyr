@@ -7,7 +7,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#define DT_DRV_COMPAT ti_gpio_x4hc595
+#define DT_DRV_COMPAT ti_x4hc595_gpio
 
 #include <kernel.h>
 #include <device.h>

@@ -9,9 +9,9 @@ menuconfig GPIO_X4HC595
 
 if GPIO_X4HC595
 
-config CONFIG_GPIO_X4HC595_INIT_PRIORITY
+config GPIO_X4HC595_INIT_PRIORITY
 	int "x4hc595 GPIO drive init priority"
-	default 50
+	default 70
 	help
 	  X4HC595 GPIO driver init priority.
 

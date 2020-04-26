@@ -3,11 +3,17 @@
 
 description: X4HC595 output shift register
 
-compatible: "ti,x4hc595"
+compatible: "ti,x4hc595-gpio"
 
-include: [spi-device.yaml, gpio-controller.yaml, base.yaml]
+include: [spi-device.yaml, gpio-controller.yaml]
 
 properties:
+    label:
+      required: true
+
+    "#gpio-cells":
+      const: 2
+
     srclr-gpios:
       type: phandle-array
       required: false
@@ -29,6 +35,7 @@ properties:
         Shift register count.
 
         Between 1 to 4 shift registers.
-    reg:
-      type: array
-      required: true
+
+gpio-cells:
+  - pin
+  - flags
