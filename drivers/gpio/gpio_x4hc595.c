@@ -248,6 +248,8 @@ static int gpio_x4hc595_init(struct device *dev)
 	struct device *oe_gpio = NULL;
 	int ret;
 
+	LOG_INF("gpio_x4hc595_init");
+
 	k_mutex_init(&dev_data->mutex);
 
 	dev_data->spi_dev = device_get_binding(dev_cfg->spi_port);
@@ -255,6 +257,16 @@ static int gpio_x4hc595_init(struct device *dev)
 		LOG_ERR("SPI master device %s not found", dev_cfg->spi_port);
 		return -ENODEV;
 	}
+
+	dev_data->cs_ctrl.gpio_dev =
+		device_get_binding(dev_cfg->gpio_cs_port);
+	if (!dev_data->cs_ctrl.gpio_dev) {
+		LOG_ERR("Unable to get GPIO SPI CS device");
+		return -ENODEV;
+	}
+
+	dev_data->cs_ctrl.gpio_pin = dev_cfg->spi_cs_pin;
+	dev_data->cs_ctrl.delay = 0U;
 
 	if (dev_cfg->srclr_port == NULL) {
 		LOG_WRN("SRCLR pin not controlled by driver");
@@ -325,14 +337,14 @@ static int gpio_x4hc595_init(struct device *dev)
 #define GPIO_X4HC595_DEVICE(inst)                                    \
 	static struct x4hc595_data x4hc595_##inst##_data;              \
 	static const struct x4hc595_cfg x4hc595_##inst##_cfg = {       \
-	.spi_port = NULL /*DT_INST_BUS_LABEL(inst)*/,                         \
+	.spi_port = DT_INST_BUS_LABEL(inst),                         \
 	.spi_freq = DT_INST_PROP(inst, spi_max_frequency),           \
 	.spi_cfg.operation = (SPI_OP_MODE_MASTER | SPI_MODE_CPOL |  \
 		               SPI_MODE_CPHA | SPI_WORD_SET(8) |     \
 		               SPI_LINES_SINGLE),                    \
 	.spi_slave = DT_INST_REG_ADDR(inst),                         \
 	.gpio_cs_port	    = DT_INST_SPI_DEV_CS_GPIOS_LABEL(inst),  \
-	.cs_gpio	    = DT_INST_SPI_DEV_CS_GPIOS_PIN(inst),    \
+	.spi_cs_pin	    = DT_INST_SPI_DEV_CS_GPIOS_PIN(inst),    \
 	.spi_cfg.cs        = &x4hc595_##inst##_data.cs_ctrl,          \
 	.srclr_pin = 0,                                              \
 	.srclr_port = NULL,                                          \

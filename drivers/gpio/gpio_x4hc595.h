@@ -33,7 +33,7 @@ struct x4hc595_cfg {
 	struct spi_config spi_cfg;
 	const char *gpio_cs_port;
 	u8_t spi_slave;
-	u8_t cs_gpio;
+	u8_t spi_cs_pin;
 
 	/* control pins */
 	u8_t srclr_pin;
